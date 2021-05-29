@@ -11,6 +11,10 @@
 #include "ird_iso.h"
 #include "md5.h"
 
+#ifdef _WIN32
+	#define mkdir(path, mode) mkdir(path)
+#endif
+
 u32 IRD_extra_sig(ird_t *ird);
 u32 IRD_keys_sig(ird_t *ird);
 u32 IRD_files_sig(ird_t *ird);
@@ -261,7 +265,7 @@ u32 IRD_extra_sig(ird_t *ird)
 	char footer_path[512];
 	
 	sprintf(TempDir, "temp");
-	mkdir(TempDir);
+	mkdir(TempDir, 0777);
 	sprintf(header_path, "%s/%s.header.bin", TempDir, ird->GameId);
 	unlink(header_path);
 	sprintf(footer_path, "%s/%s.footer.bin", TempDir, ird->GameId);
