@@ -1,11 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <zlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+
+#if defined (__MSVCRT__)
+#undef __STRICT_ANSI__ // ugly
+#include <string.h>
+#define strcasecmp	_strcmpi
+#define stat _stati64
+#else
+#include <string.h>
+#endif
 
 #include "ird_build.h"
 #include "ird_iso.h"
@@ -49,6 +57,30 @@ void fputs_hex(u8 *data, size_t len, FILE *f)
         }
         i++;
    } 
+}
+
+char *GetExtension(char *path)
+{
+    int n = strlen(path);
+    int m = n;
+
+    while(m > 1 && path[m] != '.' && path[m] != '/') m--;
+    
+	
+    if(strcmp(&path[m], ".0")==0 || strcmp(&path[m], ".66600")==0) { // splitted
+       m--;
+       while(m > 1 && path[m] != '.' && path[m] != '/') m--; 
+    }
+	
+	if(strcasecmp(&path[m], ".bin")==0) {
+		if(strcasecmp(&path[m-7], ".header.bin")==0) {
+			m-=7;	
+		}
+	}
+  
+    if(path[m] == '.') return &path[m];
+
+    return &path[n];
 }
 
 void IRD_extract(char *IRD_PATH)
@@ -370,6 +402,37 @@ void IRD_rename(char *IRD_PATH)
 	rename(IRD_PATH, NEW_PATH);
 }
 
+/*
+ It check if someone generated an corrupted ird with a wrong size of header 
+ Issue from managunz : https://github.com/Zarh/ManaGunZ/issues/58#
+*/
+void check_header_size(char *IRD_PATH)
+{	
+	FILE *f = fopen("check_header.txt", "a");
+	if( f == NULL) return;
+	
+	char HEADER_PATH[512]={0};
+	sprintf(HEADER_PATH, "%s.header.bin", IRD_PATH);
+	
+	struct stat s;
+    stat(HEADER_PATH, &s);
+	
+	ird_t *ird=IRD_load(IRD_PATH);
+	if(ird==NULL) return;
+	
+	char str[512]={0};
+	sprintf(str, "%s = ", IRD_PATH);
+	if( ird->FileHashes[0].Sector * 0x800 == s.st_size){
+		strcat(str, "OK\n");
+	} else {
+		strcat(str, "ERROR\n");
+	}
+	fputs(str, f);
+	fclose(f);
+	
+	FREE_IRD(ird);
+}
+
 u8 is_dir(char *path)
 {
 	struct stat path_stat;
@@ -377,13 +440,44 @@ u8 is_dir(char *path)
     return S_ISDIR(path_stat.st_mode);
 }
 
-void do_task(char *ird_path, u8 extract)
+#define do_extract			 	0
+#define do_rename				1
+#define do_check_header_size	2
+
+void do_it(char *path, u8 task)
+{
+	switch(task)
+	{
+		case do_extract:
+		{
+			IRD_extract(path);
+		}
+		break;
+		case do_rename:
+		{
+			IRD_rename(path);
+		}
+		break;
+		case do_check_header_size:
+		{
+			check_header_size(path);
+		}
+		break;
+		default:
+		{
+			print_help();
+		}
+		break;
+	}
+}
+
+void do_task(char *path_in, u8 task)
 {
 	DIR *d;
 	struct dirent *dir;
 	
 	char path[512];
-	strcpy(path, ird_path);
+	strcpy(path, path_in);
 	int l = strlen(path);
 	int i;
 	
@@ -401,22 +495,21 @@ void do_task(char *ird_path, u8 extract)
 			char temp[512];
 			sprintf(temp, "%s/%s", path, dir->d_name);
 			
-			if(is_dir(temp)) do_task(temp, extract);
+			if(is_dir(temp)) do_task(temp, task);
 			else {
-				int l = strlen(temp);
-				if( 	temp[l-4] != '.'
-					||	temp[l-3] != 'i'
-					||	temp[l-2] != 'r'
-					||	temp[l-1] != 'd' ) continue;
 				
-				if(extract) IRD_extract(temp);
-				else 		IRD_rename(temp);
+				char *ext = GetExtension(temp);
+				if( strcasecmp(ext, ".ird") == 0) {
+					do_it(temp, task);
+				}
 			}
 		}
 		closedir(d);
 	} else {
-		if(extract) IRD_extract(path);
-		else 		IRD_rename(path);
+		char *ext = GetExtension(path);
+		if( strcasecmp(ext, ".ird") == 0) {
+			do_it(path, task);
+		}
 	}
 }
 
@@ -424,9 +517,8 @@ u8 verbose=0;
 int main (int argc, char **argv)
 {	
 	if(argc==1) print_help();
-	int i;
 	
-	u8 extract=1;
+	u8 task = do_extract;
 	verbose=0;
 	
 	int args = 1;
@@ -435,14 +527,22 @@ int main (int argc, char **argv)
 		args++;
 	}
 	
-	if(strcmp(argv[args], "rename") == 0){
-		extract=0;
+	if(strcmp(argv[args], "do_extract") == 0){
+		task=do_extract;
+		args++;
+	} else
+	if(strcmp(argv[args], "do_check_header_size") == 0){
+		task=do_check_header_size;
+		args++;
+	} else
+	if(strcmp(argv[args], "do_rename") == 0){
+		task=do_rename;
 		args++;
 	}
 	
-	
+	u32 i;
 	for(i=args;i<argc;i++) {
-		do_task(argv[i], extract);
+		do_task(argv[i], task);
 	}
 	
 	rmdir("temp");
