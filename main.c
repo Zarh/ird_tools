@@ -236,6 +236,8 @@ void IRD_extract(char *IRD_PATH)
 	fputs(" MD5                              | SECTOR          | PATH\n", log);
 	fputs("__________________________________|_________________|__________ _ _ _\n", log);
 	fputs("                                  |                 |\n", log);
+	u8 current_region=0;
+	u8 plain = 1;
 	for(i=0; i<ird->FileHashesNumber; i++) {
 		  fputs(     "\t\t{\n", json);
 		sprintf(msg, "\t\t\t\"PATH\" : \"%s\",\n", ird->FileHashes[i].FilePath);fputs(msg, json);
@@ -258,7 +260,15 @@ void IRD_extract(char *IRD_PATH)
 						ird->FileHashes[i].FileHash[0xF]);fputs(msg, json);
 		sprintf(msg, "\t\t\t\"SECTOR\" : %d,\n", ird->FileHashes[i].Sector);fputs(msg, json);
 		sprintf(msg, "\t\t\t\"SIZE\" : %d,\n", ird->FileHashes[i].FileSize);fputs(msg, json);
-		
+		if( ird->RegionHashes[current_region].End < ird->FileHashes[i].Sector ) {
+			plain = !plain;
+			current_region+=1;
+		}
+		if( plain ) {
+			fputs("\t\t\t\"TYPE\" : \"Plain\",\n", json);
+		} else {
+			fputs("\t\t\t\"TYPE\" : \"Encrypted\",\n", json);
+		}
 		
 		sprintf(msg, " %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X | %-15d | ", 
 						ird->FileHashes[i].FileHash[0x0],
@@ -301,6 +311,7 @@ void IRD_extract(char *IRD_PATH)
 	fputs("  MD5                             | REGION               |\n", log);
 	fputs("__________________________________|______________________|\n", log);
 	fputs("                                  |                      |\n", log);
+	plain=1;
 	for(i=0; i<ird->RegionHashesNumber; i++) {
 		fputs(       "\t\t{\n", json);
 		sprintf(msg, "\t\t\t\"MD5\": \"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\",\n", 
@@ -342,11 +353,17 @@ void IRD_extract(char *IRD_PATH)
 						ird->RegionHashes[i].RegionHash[0xE],
 						ird->RegionHashes[i].RegionHash[0xF], i+1);
 		fputs(msg, log);
-		 if( i < ird->RegionHashesNumber - 1 ) {
-		  	 fputs("\t\t},\n", json);
-		 } else {
-		 	 fputs("\t\t}\n", json);
-		 }	
+		if( plain ) {
+			fputs("\t\t\t\"TYPE\" : \"Plain\",\n", json);
+		} else {
+			fputs("\t\t\t\"TYPE\" : \"Encrypted\",\n", json);
+		}
+		plain = !plain;
+		if( i < ird->RegionHashesNumber - 1 ) {
+			fputs("\t\t},\n", json);
+		} else {
+			fputs("\t\t}\n", json);
+		}	
 	}
 	fputs("__________________________________|______________________|\n\n", log);
 	
