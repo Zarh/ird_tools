@@ -1,0 +1,8 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\*\shell\ird_tools]
+@="IRD Extract"
+"AppliesTo"=".ird"
+
+[HKEY_CLASSES_ROOT\*\shell\ird_tools\command]
+@="C:\\PSDK3v2\\ps3dev\\bin\\ird_tools.exe \"%1\""

@@ -512,6 +512,7 @@ u8 IRD_GetFilesPath(char *ISO_PATH, ird_t *ird)
                         if( ird->FileHashes[i].Sector == file_lba) {
                             ird->FileHashes[i].FilePath = strcpy_malloc(string2);
                             if(ird->FileHashes[i].FilePath==NULL) {printf("ird->FileHashes[i].FilePath malloc failed");}
+                            ird->FileHashes[i].FileSize = file_size;
                             break;
                         }
 					}
@@ -569,3 +570,61 @@ err:
     return -1;
 }
 
+u8 IRD_GetRegionBoundaries(char *ISO_PATH, ird_t *ird)
+{
+    FILE *f = fopen(ISO_PATH, "rb");
+    if(f==NULL) {
+        print_load("Error: IRD_GetRegionBoundaries fopen failed");
+        return FAILED;
+    }
+
+    u32 RegionNumber;
+   
+    fread(&RegionNumber, sizeof(u32), 1, f);
+    RegionNumber = SWAP_BE(RegionNumber);
+    
+    if( RegionNumber*2-1 != ird->RegionHashesNumber ) {
+        printf("Error : Region numbers are different, (header) %X != %X (IRD)\n", RegionNumber, ird->RegionHashesNumber);
+        FCLOSE(f);
+        return FAILED;
+    }
+    
+    fseek(f, 8, SEEK_SET);
+    
+    
+    int i;
+    for(i=0; i<ird->RegionHashesNumber; i+=2){
+        
+        fread(&ird->RegionHashes[i].Start, sizeof(u32), 1, f);
+        ird->RegionHashes[i].Start = SWAP_BE(ird->RegionHashes[i].Start);
+        if( i!= 0 ){
+            ird->RegionHashes[i-1].End = ird->RegionHashes[i].Start - 1;
+        }
+        
+        fread(&ird->RegionHashes[i].End, sizeof(u32), 1, f);
+        ird->RegionHashes[i].End = SWAP_BE(ird->RegionHashes[i].End);
+        
+        if( i + 1 < ird->RegionHashesNumber) {
+            ird->RegionHashes[i+1].Start = ird->RegionHashes[i].End + 1;
+        }
+    }
+    
+    
+    FCLOSE(f);
+    
+    return SUCCESS;
+}
+
+u8 GetPVD(char *ISO, u8 *PVD)
+{
+    memset(PVD, 0, 0x60);
+    
+    FILE *f = fopen(ISO, "rb");
+    if(f==NULL) return FAILED;
+    
+    fseek(f, 0x8320, SEEK_SET);
+    fread(PVD, 0x60, 1, f);
+    fclose(f);
+    
+    return SUCCESS;
+}

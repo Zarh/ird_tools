@@ -15,6 +15,8 @@
 #include <string.h>
 #endif
 
+#include "aes.h"
+
 #include "ird_build.h"
 #include "ird_iso.h"
 #include "md5.h"
@@ -27,6 +29,10 @@ u32 IRD_extra_sig(ird_t *ird);
 u32 IRD_keys_sig(ird_t *ird);
 u32 IRD_files_sig(ird_t *ird);
 u32 IRD_meta_sig(ird_t *ird);
+void dec_d2(unsigned char* d2);
+void dec_d1(unsigned char* d1);
+void enc_d2(unsigned char* d2);
+void enc_d1(unsigned char* d1);
 
 void print_help()
 {
@@ -100,7 +106,7 @@ void IRD_extract(char *IRD_PATH)
 	sprintf(IRD_HEADER, "%s.header.bin", IRD_PATH);
 	sprintf(IRD_FOOTER, "%s.footer.bin", IRD_PATH);
 	sprintf(IRD_DISC_KEY, "%s.disc.key", IRD_PATH);
-
+	
 	print_verbose("GZ_decompress7 header %X", ird->HeaderLength);
 	ret = GZ_decompress7((char *) ird->Header, ird->HeaderLength, IRD_HEADER);
 	if( ret != Z_OK ) {
@@ -120,6 +126,11 @@ void IRD_extract(char *IRD_PATH)
 	print_verbose("IRD_GetFilesPath");
 	IRD_GetFilesPath(IRD_HEADER, ird);
 	
+	print_verbose("IRD_GetRegionBoundaries");
+	if( IRD_GetRegionBoundaries(IRD_HEADER, ird) == FAILED ) {
+		print_load("Error: failed to IRD_GetRegionBoundaries %s", IRD_PATH);
+		return;
+	}
 	
 	print_verbose("disc.key");
 	FILE *dk;
@@ -143,6 +154,78 @@ void IRD_extract(char *IRD_PATH)
 		return;
 	}
 	
+	
+	char IRD_JSON[512];
+	sprintf(IRD_JSON, "%s.json", IRD_PATH);
+	FILE *json=fopen(IRD_JSON, "w");
+	if(json==NULL) {
+		printf("Error : failed to open %s", IRD_JSON);
+		fclose(log);
+		FREE_IRD(ird);
+		return;
+	}
+	
+	u32 meta_sig = IRD_meta_sig(ird);
+	u32 files_sig = IRD_files_sig(ird);
+	u32 extra_sig = IRD_extra_sig(ird);
+	u32 keys_sig = IRD_keys_sig(ird);
+	if( !meta_sig || !files_sig || !extra_sig || !keys_sig) {
+		FREE_IRD(ird);
+		fclose(log);
+		return;
+	}
+	
+	  fputs("{\n", json);
+
+	// maybe used for ird portal
+	// trust_level = UPLOADERS_ID.count 
+	  fputs(     "\t\"TRUST_LVL\" : 0,\n", json);
+	  fputs(     "\t\"UPLOADERS\" : [],\n", json);
+	  fputs(     "\t\"UPLOADERS_ID\" : [],\n", json);
+	  
+	sprintf(msg, "\t\"MGZ_SIG\" : \"%08X_%08X_%08X_%08X\",\n", meta_sig, files_sig, extra_sig, keys_sig);fputs(msg, json);
+	unsigned char ird_md5[16];
+	md5_file((const char *) IRD_PATH, ird_md5);
+	sprintf(msg, "\t\"MD5\" : \"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\",\n", 
+						ird_md5[0x0],
+						ird_md5[0x1],
+						ird_md5[0x2],
+						ird_md5[0x3],
+						ird_md5[0x4],
+						ird_md5[0x5],
+						ird_md5[0x6],
+						ird_md5[0x7],
+						ird_md5[0x8],
+						ird_md5[0x9],
+						ird_md5[0xA],
+						ird_md5[0xB],
+						ird_md5[0xC],
+						ird_md5[0xD],
+						ird_md5[0xE],
+						ird_md5[0xF]); fputs(msg, json);
+	 
+	 
+	
+	
+	// Values from IRD
+	sprintf(msg, "\t\"TITLE\" : \"%s\",\n", ird->GameName);fputs(msg, json);
+	sprintf(msg, "\t\"TITLE_ID\" : \"%s\",\n", ird->GameId);fputs(msg, json);
+	sprintf(msg, "\t\"GAME_VER\" : \"%s\",\n", ird->GameVersion);fputs(msg, json);
+	sprintf(msg, "\t\"SYS_VER\" : \"%s\",\n", ird->UpdateVersion);fputs(msg, json);
+	sprintf(msg, "\t\"APP_VER\" : \"%s\",\n", ird->AppVersion);fputs(msg, json);
+	
+	sprintf(msg, "\t\"HEADER_LEN\" : %d,\n", ird->HeaderLength);fputs(msg, json);
+	sprintf(msg, "\t\"FOOTER_LEN\" : %d,\n", ird->FooterLength);fputs(msg, json);
+	sprintf(msg, "\t\"DISC_SIZE\" : %d,\n", ird->RegionHashes[ird->RegionHashesNumber-1].End);fputs(msg, json);
+	sprintf(msg, "\t\"IRD_VERSION\" : %d,\n", ird->Version);fputs(msg, json);
+	sprintf(msg, "\t\"EXTRA_CONFIG\" : \"%X\",\n", ird->ExtraConfig);fputs(msg, json);
+	sprintf(msg, "\t\"ATTACHMENTS\" : \"%X\",\n", ird->Attachments);fputs(msg, json);
+	sprintf(msg, "\t\"UNIQUE_ID\" : \"%08X\",\n", ird->UniqueIdentifier);fputs(msg, json);
+	sprintf(msg, "\t\"CRC\" : \"%08X\",\n", ird->crc);fputs(msg, json);
+	
+	  fputs(     "\t\"FILES\" :\n", json);
+	  fputs(     "\t[\n", json);
+	
 	sprintf(msg, "Game Name : %s\nGame ID : %s\nUpdate : %s\nGame Version : %s\nApp Version : %s\n", ird->GameName, ird->GameId, ird->UpdateVersion, ird->GameVersion, ird->AppVersion);
 	fputs(msg, log);
 	sprintf(msg, "Files Number = %d\n", ird->FileHashesNumber);
@@ -154,6 +237,29 @@ void IRD_extract(char *IRD_PATH)
 	fputs("__________________________________|_________________|__________ _ _ _\n", log);
 	fputs("                                  |                 |\n", log);
 	for(i=0; i<ird->FileHashesNumber; i++) {
+		  fputs(     "\t\t{\n", json);
+		sprintf(msg, "\t\t\t\"PATH\" : \"%s\",\n", ird->FileHashes[i].FilePath);fputs(msg, json);
+		sprintf(msg, "\t\t\t\"MD5\" : \"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\",\n", 
+						ird->FileHashes[i].FileHash[0x0],
+						ird->FileHashes[i].FileHash[0x1],
+						ird->FileHashes[i].FileHash[0x2],
+						ird->FileHashes[i].FileHash[0x3],
+						ird->FileHashes[i].FileHash[0x4],
+						ird->FileHashes[i].FileHash[0x5],
+						ird->FileHashes[i].FileHash[0x6],
+						ird->FileHashes[i].FileHash[0x7],
+						ird->FileHashes[i].FileHash[0x8],
+						ird->FileHashes[i].FileHash[0x9],
+						ird->FileHashes[i].FileHash[0xA],
+						ird->FileHashes[i].FileHash[0xB],
+						ird->FileHashes[i].FileHash[0xC],
+						ird->FileHashes[i].FileHash[0xD],
+						ird->FileHashes[i].FileHash[0xE],
+						ird->FileHashes[i].FileHash[0xF]);fputs(msg, json);
+		sprintf(msg, "\t\t\t\"SECTOR\" : %d,\n", ird->FileHashes[i].Sector);fputs(msg, json);
+		sprintf(msg, "\t\t\t\"SIZE\" : %d,\n", ird->FileHashes[i].FileSize);fputs(msg, json);
+		
+		
 		sprintf(msg, " %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X | %-15d | ", 
 						ird->FileHashes[i].FileHash[0x0],
 						ird->FileHashes[i].FileHash[0x1],
@@ -175,8 +281,18 @@ void IRD_extract(char *IRD_PATH)
 		fputs(msg, log);
 		sprintf(msg, "%s\n", ird->FileHashes[i].FilePath);
 		fputs(msg, log);
+		 
+		 if( i < ird->FileHashesNumber - 1 ) {
+		  	 fputs("\t\t},\n", json);
+		 } else {
+		 	 fputs("\t\t}\n", json);
+		 }
 	}
 	fputs("__________________________________|_________________|__________ _ _ _\n\n", log);
+
+	fputs("\t],\n", json);
+	fputs("\t\"REGION\" :\n", json);
+	fputs("\t[\n", json);
 	
 	sprintf(msg, "Region Number = %d\n", ird->RegionHashesNumber);
 	fputs(msg, log);
@@ -186,24 +302,51 @@ void IRD_extract(char *IRD_PATH)
 	fputs("__________________________________|______________________|\n", log);
 	fputs("                                  |                      |\n", log);
 	for(i=0; i<ird->RegionHashesNumber; i++) {
+		fputs(       "\t\t{\n", json);
+		sprintf(msg, "\t\t\t\"MD5\": \"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\",\n", 
+						ird->RegionHashes[i].RegionHash[0x0],
+						ird->RegionHashes[i].RegionHash[0x1],
+						ird->RegionHashes[i].RegionHash[0x2],
+						ird->RegionHashes[i].RegionHash[0x3],
+						ird->RegionHashes[i].RegionHash[0x4],
+						ird->RegionHashes[i].RegionHash[0x5],
+						ird->RegionHashes[i].RegionHash[0x6],
+						ird->RegionHashes[i].RegionHash[0x7],
+						ird->RegionHashes[i].RegionHash[0x8],
+						ird->RegionHashes[i].RegionHash[0x9],
+						ird->RegionHashes[i].RegionHash[0xA],
+						ird->RegionHashes[i].RegionHash[0xB],
+						ird->RegionHashes[i].RegionHash[0xC],
+						ird->RegionHashes[i].RegionHash[0xD],
+						ird->RegionHashes[i].RegionHash[0xE],
+						ird->RegionHashes[i].RegionHash[0xF]); fputs(msg, json);
+						
+		sprintf(msg, "\t\t\t\"START\": %d,\n",	ird->RegionHashes[i].Start); fputs(msg, json);
+		sprintf(msg, "\t\t\t\"END\": %d\n",	ird->RegionHashes[i].End); fputs(msg, json);
+		
 		sprintf(msg, " %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X | %-20d |\n", 
-						ird->RegionHashes[i][0x0],
-						ird->RegionHashes[i][0x1],
-						ird->RegionHashes[i][0x2],
-						ird->RegionHashes[i][0x3],
-						ird->RegionHashes[i][0x4],
-						ird->RegionHashes[i][0x5],
-						ird->RegionHashes[i][0x6],
-						ird->RegionHashes[i][0x7],
-						ird->RegionHashes[i][0x8],
-						ird->RegionHashes[i][0x9],
-						ird->RegionHashes[i][0xA],
-						ird->RegionHashes[i][0xB],
-						ird->RegionHashes[i][0xC],
-						ird->RegionHashes[i][0xD],
-						ird->RegionHashes[i][0xE],
-						ird->RegionHashes[i][0xF], i+1);
+						ird->RegionHashes[i].RegionHash[0x0],
+						ird->RegionHashes[i].RegionHash[0x1],
+						ird->RegionHashes[i].RegionHash[0x2],
+						ird->RegionHashes[i].RegionHash[0x3],
+						ird->RegionHashes[i].RegionHash[0x4],
+						ird->RegionHashes[i].RegionHash[0x5],
+						ird->RegionHashes[i].RegionHash[0x6],
+						ird->RegionHashes[i].RegionHash[0x7],
+						ird->RegionHashes[i].RegionHash[0x8],
+						ird->RegionHashes[i].RegionHash[0x9],
+						ird->RegionHashes[i].RegionHash[0xA],
+						ird->RegionHashes[i].RegionHash[0xB],
+						ird->RegionHashes[i].RegionHash[0xC],
+						ird->RegionHashes[i].RegionHash[0xD],
+						ird->RegionHashes[i].RegionHash[0xE],
+						ird->RegionHashes[i].RegionHash[0xF], i+1);
 		fputs(msg, log);
+		 if( i < ird->RegionHashesNumber - 1 ) {
+		  	 fputs("\t\t},\n", json);
+		 } else {
+		 	 fputs("\t\t}\n", json);
+		 }	
 	}
 	fputs("__________________________________|______________________|\n\n", log);
 	
@@ -219,20 +362,34 @@ void IRD_extract(char *IRD_PATH)
 	fputs("        ", log); fputs_hex(ird->PIC + 0x70, 0x03, log); fputs("\n\n", log);
 	
 	
-	u32 meta_sig = IRD_meta_sig(ird);
-	u32 files_sig = IRD_files_sig(ird);
-	u32 extra_sig = IRD_extra_sig(ird);
-	u32 keys_sig = IRD_keys_sig(ird);
-	if( !meta_sig || !files_sig || !extra_sig || !keys_sig) {
-		FREE_IRD(ird);
-		return;
-	}
-	
 	sprintf(msg, "MGZ_SIG = %08X_%08X_%08X_%08X\n", meta_sig, files_sig, extra_sig, keys_sig);
 	fputs(msg, log);
-	
 	fclose(log);
 	
+		
+	fputs("\t],\n", json);
+	fputs("\t\"DATA1_DEC\" : \"", json); fputs_hex(ird->Data1     , 0x10, json); fputs("\",\n", json);
+	enc_d1(ird->Data1);
+	fputs("\t\"DATA1_ENC\" : \"", json); fputs_hex(ird->Data1     , 0x10, json); fputs("\",\n", json);
+	dec_d2(ird->Data2);
+	fputs("\t\"DATA2_DEC\" : \"", json); fputs_hex(ird->Data2     , 0x10, json); fputs("\",\n", json);
+	enc_d2(ird->Data2);
+	fputs("\t\"DATA2_ENC\" : \"", json); fputs_hex(ird->Data2     , 0x10, json); fputs("\",\n", json);
+	
+	
+	fputs("\t\"PIC\" : \"", json); fputs_hex(ird->PIC     , 0x73, json); fputs("\",\n", json);
+	
+	print_verbose("GetPVD");
+	u8 PVD[0x60] = {0};
+	if( GetPVD(IRD_HEADER, PVD) == SUCCESS ) {
+		fputs("\t\"PVD\" : \"", json); fputs_hex(PVD, 0x60, json); fputs("\"\n", json);
+	} else {
+		print_load("Error: failed to getPVD");
+	}
+	
+	fputs("}\n", json);
+	
+	fclose(json);
 	FREE_IRD(ird);
 }
 
@@ -548,4 +705,54 @@ int main (int argc, char **argv)
 	rmdir("temp");
 	
 	return 0;
+}
+
+// Crypto functions (AES128-CBC, AES128-ECB, SHA1-HMAC and AES-CMAC).
+void aes_cbc_decrypt(unsigned char *key, unsigned char *iv, unsigned char *in, unsigned char *out, int len)
+{
+	aes_context ctx;
+	aes_setkey_dec(&ctx, key, 128);
+	aes_crypt_cbc(&ctx, AES_DECRYPT, len, iv, in, out);
+
+	// Reset the IV.
+	memset(iv, 0, 0x10);
+}
+
+void aes_cbc_encrypt(unsigned char *key, unsigned char *iv, unsigned char *in, unsigned char *out, int len)
+{
+	aes_context ctx;
+	aes_setkey_enc(&ctx, key, 128);
+	aes_crypt_cbc(&ctx, AES_ENCRYPT, len, iv, in, out);
+
+	// Reset the IV.
+	memset(iv, 0, 0x10);
+}
+
+void dec_d1(unsigned char* d1)
+{
+	unsigned char key[]= { 0x38, 11, 0xcf, 11, 0x53, 0x45, 0x5b, 60, 120, 0x17, 0xab, 0x4f, 0xa3, 0xba, 0x90, 0xed };
+	unsigned char iV[] = { 0x69, 0x47, 0x47, 0x72, 0xaf, 0x6f, 0xda, 0xb3, 0x42, 0x74, 0x3a, 0xef, 170, 0x18, 0x62, 0x87 };
+	
+	aes_cbc_decrypt(key, iV, d1, d1, 16);
+}
+
+void dec_d2(unsigned char* d2)
+{
+	unsigned char key[]= { 0x7c, 0xdd, 14, 2, 7, 110, 0xfe, 0x45, 0x99, 0xb1, 0xb8, 0x2c, 0x35, 0x99, 0x19, 0xb3 };
+	unsigned char iV[] = { 0x22, 0x26, 0x92, 0x8d, 0x44, 3, 0x2f, 0x43, 0x6a, 0xfd, 0x26, 0x7e, 0x74, 0x8b, 0x23, 0x93 };
+	aes_cbc_decrypt(key, iV, d2, d2, 16);
+}
+
+void enc_d1(unsigned char* d1)
+{
+	unsigned char key[]= { 0x38, 11, 0xcf, 11, 0x53, 0x45, 0x5b, 60, 120, 0x17, 0xab, 0x4f, 0xa3, 0xba, 0x90, 0xed };
+	unsigned char iV[] = { 0x69, 0x47, 0x47, 0x72, 0xaf, 0x6f, 0xda, 0xb3, 0x42, 0x74, 0x3a, 0xef, 170, 0x18, 0x62, 0x87 };
+	aes_cbc_encrypt(key, iV, d1, d1, 16);
+}
+
+void enc_d2(unsigned char* d2)
+{
+	unsigned char key[]= { 0x7c, 0xdd, 14, 2, 7, 110, 0xfe, 0x45, 0x99, 0xb1, 0xb8, 0x2c, 0x35, 0x99, 0x19, 0xb3 };
+	unsigned char iV[] = { 0x22, 0x26, 0x92, 0x8d, 0x44, 3, 0x2f, 0x43, 0x6a, 0xfd, 0x26, 0x7e, 0x74, 0x8b, 0x23, 0x93 };
+	aes_cbc_encrypt(key, iV, d2, d2, 16);
 }
