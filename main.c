@@ -101,11 +101,18 @@ void IRD_extract(char *IRD_PATH)
 	char IRD_HEADER[512];
 	char IRD_FOOTER[512];
 	char IRD_DISC_KEY[512];
+	char IRD_JSON[512];
+	char TEMP[512];
 	
-	sprintf(IRD_LOG, "%s.log.txt", IRD_PATH);
-	sprintf(IRD_HEADER, "%s.header.bin", IRD_PATH);
-	sprintf(IRD_FOOTER, "%s.footer.bin", IRD_PATH);
-	sprintf(IRD_DISC_KEY, "%s.disc.key", IRD_PATH);
+	strcpy(TEMP, IRD_PATH);
+	
+	TEMP[strlen(IRD_PATH)-4] = 0; 
+	
+	sprintf(IRD_JSON, "%s.json"        , TEMP);
+	sprintf(IRD_LOG, "%s.log.txt"      , TEMP);
+	sprintf(IRD_HEADER, "%s.header.bin", TEMP);
+	sprintf(IRD_FOOTER, "%s.footer.bin", TEMP);
+	sprintf(IRD_DISC_KEY, "%s.disc.key", TEMP);
 	
 	print_verbose("GZ_decompress7 header %X", ird->HeaderLength);
 	ret = GZ_decompress7((char *) ird->Header, ird->HeaderLength, IRD_HEADER);
@@ -132,6 +139,7 @@ void IRD_extract(char *IRD_PATH)
 		return;
 	}
 	
+	/*
 	print_verbose("disc.key");
 	FILE *dk;
 	dk = fopen(IRD_DISC_KEY, "wb");
@@ -145,6 +153,7 @@ void IRD_extract(char *IRD_PATH)
 	fwrite(&ird->Data2, 1, 0x10, dk);
 	fwrite(&ird->PIC, 1, 0x73, dk);
 	fclose(dk);
+	*/
 	
 	FILE *log=NULL;
 	log=fopen(IRD_LOG, "w");
@@ -154,9 +163,6 @@ void IRD_extract(char *IRD_PATH)
 		return;
 	}
 	
-	
-	char IRD_JSON[512];
-	sprintf(IRD_JSON, "%s.json", IRD_PATH);
 	FILE *json=fopen(IRD_JSON, "w");
 	if(json==NULL) {
 		printf("Error : failed to open %s", IRD_JSON);
@@ -265,9 +271,9 @@ void IRD_extract(char *IRD_PATH)
 			current_region+=1;
 		}
 		if( plain ) {
-			fputs("\t\t\t\"TYPE\" : \"Plain\",\n", json);
+			fputs("\t\t\t\"TYPE\" : \"Plain\"\n", json);
 		} else {
-			fputs("\t\t\t\"TYPE\" : \"Encrypted\",\n", json);
+			fputs("\t\t\t\"TYPE\" : \"Encrypted\"\n", json);
 		}
 		
 		sprintf(msg, " %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X | %-15d | ", 
@@ -333,7 +339,12 @@ void IRD_extract(char *IRD_PATH)
 						ird->RegionHashes[i].RegionHash[0xF]); fputs(msg, json);
 						
 		sprintf(msg, "\t\t\t\"START\": %d,\n",	ird->RegionHashes[i].Start); fputs(msg, json);
-		sprintf(msg, "\t\t\t\"END\": %d\n",	ird->RegionHashes[i].End); fputs(msg, json);
+		sprintf(msg, "\t\t\t\"END\": %d,\n",	ird->RegionHashes[i].End); fputs(msg, json);
+		if( plain ) {
+			fputs("\t\t\t\"TYPE\" : \"Plain\",\n", json);
+		} else {
+			fputs("\t\t\t\"TYPE\" : \"Encrypted\",\n", json);
+		}
 		
 		sprintf(msg, " %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X | %-20d |\n", 
 						ird->RegionHashes[i].RegionHash[0x0],
@@ -353,11 +364,6 @@ void IRD_extract(char *IRD_PATH)
 						ird->RegionHashes[i].RegionHash[0xE],
 						ird->RegionHashes[i].RegionHash[0xF], i+1);
 		fputs(msg, log);
-		if( plain ) {
-			fputs("\t\t\t\"TYPE\" : \"Plain\",\n", json);
-		} else {
-			fputs("\t\t\t\"TYPE\" : \"Encrypted\",\n", json);
-		}
 		plain = !plain;
 		if( i < ird->RegionHashesNumber - 1 ) {
 			fputs("\t\t},\n", json);

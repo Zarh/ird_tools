@@ -1,4 +1,6 @@
 *.ird*
+*.bin
+*.json
 
 # Prerequisites
 *.d
