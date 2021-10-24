@@ -215,7 +215,7 @@ void IRD_extract(char *IRD_PATH)
 	
 	sprintf(msg, "\t\"HEADER_LEN\" : %d,\n", ird->HeaderLength);fputs(msg, json);
 	sprintf(msg, "\t\"FOOTER_LEN\" : %d,\n", ird->FooterLength);fputs(msg, json);
-	sprintf(msg, "\t\"DISC_SIZE\" : %d,\n", ird->RegionHashes[ird->RegionHashesNumber-1].End * 0x800);fputs(msg, json);
+	sprintf(msg, "\t\"DISC_SIZE\" : %lld,\n", (u64) ((u64) ird->RegionHashes[ird->RegionHashesNumber-1].End * 0x800ULL));fputs(msg, json);
 	sprintf(msg, "\t\"IRD_VERSION\" : %d,\n", ird->Version);fputs(msg, json);
 	sprintf(msg, "\t\"EXTRA_CONFIG\" : \"%X\",\n", ird->ExtraConfig);fputs(msg, json);
 	sprintf(msg, "\t\"ATTACHMENTS\" : \"%X\",\n", ird->Attachments);fputs(msg, json);
