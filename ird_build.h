@@ -18,6 +18,7 @@ typedef uint64_t 	u64;
 #include "md5.h"
 
 extern u8 verbose;
+extern u8 get_data;
 
 #define print_verbose(...) 	if( verbose ) print_load(__VA_ARGS__)
 
@@ -60,7 +61,16 @@ extern u8 verbose;
 #define SIZEOF_IRD(x)  (4+1+9+1+x->GameName_length+4+5+5+4+x->HeaderLength+4+x->FooterLength+\
 						1+x->RegionHashesNumber*0x10+4+x->FileHashesNumber*(0x8+0x10)+2+2+\
 						0x73+0x10+0x10+4+4)
-						
+
+
+#define GET_HEADER		1
+#define GET_FOOTER		2
+#define GET_JSON		4
+#define GET_TXT			8
+#define GET_IRDU		16
+
+#define GET_ALL			GET_HEADER | GET_FOOTER | GET_JSON | GET_TXT | GET_IRDU
+
 typedef struct
 {
 	u64 Sector;

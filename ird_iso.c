@@ -127,7 +127,7 @@ static void UTF16_to_UTF8(u16 *stw, u8 *stb)
             *(stb++) = ((SWAP_BE(stw[0])>>6) & 0xFF) | 0xC0; *(stb++) = (SWAP_BE(stw[0]) & 0x3F) | 0x80;
         } else if((SWAP_BE(stw[0]) & 0xFC00) == 0xD800 && (SWAP_BE(stw[1]) & 0xFC00) == 0xDC00 ) { // utf16 110110ww wwzzzzyy 110111yy yyxxxxxx (wwww = uuuuu - 1) 
                                                                              // utf8 1111000uu 10uuzzzz 10yyyyyy 10xxxxxx  
-            *(stb++)= (((SWAP_BE(stw[0]) + 64)>>8) & 0x3) | 0xF0; *(stb++)= (((SWAP_BE(stw[0])>>2) + 16) & 0x3F) | 0x80; 
+																			 *(stb++)= (((SWAP_BE(stw[0]) + 64)>>8) & 0x3) | 0xF0; *(stb++)= (((SWAP_BE(stw[0])>>2) + 16) & 0x3F) | 0x80; 
             *(stb++)= ((SWAP_BE(stw[0])>>4) & 0x30) | 0x80 | ((SWAP_BE(stw[1])<<2) & 0xF); *(stb++)= (SWAP_BE(stw[1]) & 0x3F) | 0x80;
             stw++;
         } else { // utf16 zzzzyyyy yyxxxxxx utf8 1110zzzz 10yyyyyy 10xxxxxx

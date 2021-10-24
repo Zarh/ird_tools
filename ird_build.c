@@ -251,6 +251,10 @@ error:
 		FREE_IRD(ird);
 	}
 	
+	if(! (get_data & GET_IRDU) ) {
+		remove(IRDU_PATH);
+	}
+	
 	return ird;
 }
 

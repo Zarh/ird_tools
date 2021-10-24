@@ -25,6 +25,11 @@
 	#define mkdir(path, mode) mkdir(path)
 #endif
 
+#define TITLE "ird_tools v0.4\n\n"
+
+u8 verbose=0;
+u8 get_data;
+
 u32 IRD_extra_sig(ird_t *ird);
 u32 IRD_keys_sig(ird_t *ird);
 u32 IRD_files_sig(ird_t *ird);
@@ -33,20 +38,6 @@ void dec_d2(unsigned char* d2);
 void dec_d1(unsigned char* d1);
 void enc_d2(unsigned char* d2);
 void enc_d1(unsigned char* d1);
-
-void print_help()
-{
-	printf(
-"ird_tools.exe version 0.2\n\n\
-To extract informations from the ird\n\
-	ird_tools.exe [ird_path1] [ird_path2] ...\n\
-  	Drag&Drop the ird(s) on the exe\n\n\
-To rename the ird with its signature '[TITLE_ID]_[SIGNATURE].ird'\n\
-	ird_tools.exe rename [ird_path1] [ird_path2] ...\n\n\
-Note : It also support directory as ird_path, it will search inside recursively\n");
-	
-	exit(0);
-}
 
 void fputs_hex(u8 *data, size_t len, FILE *f)
 {
@@ -122,12 +113,14 @@ void IRD_extract(char *IRD_PATH)
 		return;
 	}
 	
-	print_verbose("GZ_decompress7 footer");
-	ret = GZ_decompress7((char *) ird->Footer, ird->FooterLength, IRD_FOOTER);
-	if( ret != Z_OK ) {
-		printf("Error : failed to decompress footer (%s)", ret);
-		FREE_IRD(ird);
-		return;
+	if( get_data & GET_FOOTER ) {
+		print_verbose("GZ_decompress7 footer");
+		ret = GZ_decompress7((char *) ird->Footer, ird->FooterLength, IRD_FOOTER);
+		if( ret != Z_OK ) {
+			printf("Error : failed to decompress footer (%s)", ret);
+			FREE_IRD(ird);
+			return;
+		}
 	}
 	
 	print_verbose("IRD_GetFilesPath");
@@ -222,7 +215,7 @@ void IRD_extract(char *IRD_PATH)
 	
 	sprintf(msg, "\t\"HEADER_LEN\" : %d,\n", ird->HeaderLength);fputs(msg, json);
 	sprintf(msg, "\t\"FOOTER_LEN\" : %d,\n", ird->FooterLength);fputs(msg, json);
-	sprintf(msg, "\t\"DISC_SIZE\" : %d,\n", ird->RegionHashes[ird->RegionHashesNumber-1].End);fputs(msg, json);
+	sprintf(msg, "\t\"DISC_SIZE\" : %d,\n", ird->RegionHashes[ird->RegionHashesNumber-1].End * 0x800);fputs(msg, json);
 	sprintf(msg, "\t\"IRD_VERSION\" : %d,\n", ird->Version);fputs(msg, json);
 	sprintf(msg, "\t\"EXTRA_CONFIG\" : \"%X\",\n", ird->ExtraConfig);fputs(msg, json);
 	sprintf(msg, "\t\"ATTACHMENTS\" : \"%X\",\n", ird->Attachments);fputs(msg, json);
@@ -397,8 +390,7 @@ void IRD_extract(char *IRD_PATH)
 	dec_d2(ird->Data2);
 	fputs("\t\"DATA2_DEC\" : \"", json); fputs_hex(ird->Data2     , 0x10, json); fputs("\",\n", json);
 	enc_d2(ird->Data2);
-	fputs("\t\"DATA2_ENC\" : \"", json); fputs_hex(ird->Data2     , 0x10, json); fputs("\",\n", json);
-	
+	fputs("\t\"DATA2_ENC\" : \"", json); fputs_hex(ird->Data2     , 0x10, json); fputs("\",\n", json);	
 	
 	fputs("\t\"PIC\" : \"", json); fputs_hex(ird->PIC     , 0x73, json); fputs("\",\n", json);
 	
@@ -414,6 +406,16 @@ void IRD_extract(char *IRD_PATH)
 	
 	fclose(json);
 	FREE_IRD(ird);
+	
+	if(! (get_data & GET_JSON) ) {
+		remove(IRD_JSON);
+	}
+	if(! (get_data & GET_HEADER) ) {
+		remove(IRD_HEADER);
+	}
+	if(! (get_data & GET_TXT) ) {
+		remove(IRD_LOG);
+	}
 }
 
 #define BUFFER_SIZE		0x100000
@@ -591,14 +593,32 @@ void check_header_size(char *IRD_PATH)
 	FILE *f = fopen("check_header.txt", "a");
 	if( f == NULL) return;
 	
+	u8 del_h=0;
+	u8 del_u=0;
+	
 	char HEADER_PATH[512]={0};
+	char IRDU_PATH[512]={0};
+	int len = strlen(IRD_PATH);
+	IRD_PATH[len-4] = 0;
 	sprintf(HEADER_PATH, "%s.header.bin", IRD_PATH);
+	IRD_PATH[len-4] = '.';
+	sprintf(IRDU_PATH, "%su", IRD_PATH);
 	
 	struct stat s;
-    stat(HEADER_PATH, &s);
+	if( stat(IRDU_PATH, &s) != 0) del_u=1;
 	
 	ird_t *ird=IRD_load(IRD_PATH);
 	if(ird==NULL) return;
+	
+    if( stat(HEADER_PATH, &s) != 0) {
+		int ret = GZ_decompress7( (char *) ird->Header, ird->HeaderLength, HEADER_PATH);
+		if( ret != Z_OK) {
+			print_load("Error : check_header_size failed to extract (%d) : %s", ret, HEADER_PATH);
+			return;
+		}
+		stat(HEADER_PATH, &s);
+		del_h=1;
+	}
 	
 	char str[512]={0};
 	sprintf(str, "%s = ", IRD_PATH);
@@ -609,8 +629,11 @@ void check_header_size(char *IRD_PATH)
 	}
 	fputs(str, f);
 	fclose(f);
-	
+
 	FREE_IRD(ird);
+	
+	if(del_h) remove(HEADER_PATH);
+	if(del_h) remove(IRDU_PATH);
 }
 
 u8 is_dir(char *path)
@@ -620,9 +643,39 @@ u8 is_dir(char *path)
     return S_ISDIR(path_stat.st_mode);
 }
 
+void print_help()
+{
+	printf(TITLE);
+	
+		printf( "Usage:\n"
+				"  Format:\n"
+				"    ird_tools [options] <input>\n"
+				"  Description :\n"
+				"    Manage ISO Rebuild Data files (IRD).\n"
+				"  Options:\n"
+				"    -e, --extract (DEFAULT)         Extract data from IRD.\n"
+				"      -x, --header                  Extract header from IRD\n"
+				"      -f, --footer                  Extract footer from IRD\n"
+				"      -j, --json                    Extract informations from IRD to a json\n"
+				"      -t, --txt                     Extract informations from IRD to a txt file\n"
+				"      -u, --uncompressed            Extract uncompressed IRD file.\n"
+				"      -a, --all (DEFAULT)           Extract everything quoted above.\n"
+				"    -r, --rename                    Rename IRD with MGZ_SIG.\n"
+				"    -i, --integrity                 Check integrity of IRD.\n"
+				"    -h, --help                      This help text.\n"
+				"    -v, --verbose                   Make the operation more talkative.\n"
+				"  Arguments:\n"
+				"    <input>                         Path of IRD.\n"
+				"  Note:\n"
+				"    It supports multiple inputs as files or directories.\n"
+				"    For example: ird_tools [ird_path1] [ird_path2] ...\n"
+				"    Directories are scanned recursively.\n"
+				);
+}
+
 #define do_extract			 	0
 #define do_rename				1
-#define do_check_header_size	2
+#define do_integrity	2
 
 void do_it(char *path, u8 task)
 {
@@ -638,9 +691,11 @@ void do_it(char *path, u8 task)
 			IRD_rename(path);
 		}
 		break;
-		case do_check_header_size:
+		case do_integrity:
 		{
 			check_header_size(path);
+			// todo check if TITLE is "Additionnal Content" (PKGDIR issue)
+			//check_additionnal_content(path);
 		}
 		break;
 		default:
@@ -693,35 +748,66 @@ void do_task(char *path_in, u8 task)
 	}
 }
 
-u8 verbose=0;
 int main (int argc, char **argv)
 {	
 	if(argc==1) print_help();
 	
 	u8 task = do_extract;
 	verbose=0;
+	get_data=0;
 	
-	int args = 1;
-	if(strcmp(argv[args], "verbose") == 0){
-		verbose=1;
-		args++;
-	}
+	u32 a = 1;
+    int i;
+    for(i=1; i<argc; i++) {
+        if( !strcmp(argv[i], "-e") || !strcmp(argv[i], "--extract") ) {
+            task = do_extract;
+            a++;
+        } else 
+        if( !strcmp(argv[i], "-r") || !strcmp(argv[i], "--rename") ) {
+            task = do_rename;
+            a++;
+        } else 
+        if( !strcmp(argv[i], "-i") || !strcmp(argv[i], "--integrity") ) {
+            task = do_integrity;
+            a++;
+        } else 
+        if( !strcmp(argv[i], "-x") || !strcmp(argv[i], "--header") ) {
+            if(! (get_data & GET_HEADER) ) get_data |= GET_HEADER;
+            a++;
+        } else 
+        if( !strcmp(argv[i], "-f") || !strcmp(argv[i], "--footer") ) {
+            if(! (get_data & GET_FOOTER) ) get_data |= GET_FOOTER;
+            a++;
+        } else 
+		if( !strcmp(argv[i], "-j") || !strcmp(argv[i], "--json") ) {
+            if(! (get_data & GET_JSON) ) get_data |= GET_JSON;
+            a++;
+        } else 
+		if( !strcmp(argv[i], "-t") || !strcmp(argv[i], "--txt") ) {
+            if(! (get_data & GET_TXT) ) get_data |= GET_TXT;
+            a++;
+        } else 
+		if( !strcmp(argv[i], "-u") || !strcmp(argv[i], "--uncompressed") ) {
+            if(! (get_data & GET_IRDU) ) get_data |= GET_IRDU;
+            a++;
+        } else
+		if( !strcmp(argv[i], "-a") || !strcmp(argv[i], "--all") ) {
+            get_data = GET_ALL;
+            a++;
+        } else
+        if( !strcmp(argv[i], "-v") ||  !strcmp(argv[i], "--verbose") ) {
+            verbose=1;
+            a++;
+        } else
+        if( !strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+            print_help();
+            return 0;
+        }
+    }
+ 	
+	if(get_data == 0) get_data=GET_ALL;
 	
-	if(strcmp(argv[args], "do_extract") == 0){
-		task=do_extract;
-		args++;
-	} else
-	if(strcmp(argv[args], "do_check_header_size") == 0){
-		task=do_check_header_size;
-		args++;
-	} else
-	if(strcmp(argv[args], "do_rename") == 0){
-		task=do_rename;
-		args++;
-	}
-	
-	u32 i;
-	for(i=args;i<argc;i++) {
+	for(i=a;i<argc;i++) {
 		do_task(argv[i], task);
 	}
 	
