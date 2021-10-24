@@ -25,7 +25,7 @@
 	#define mkdir(path, mode) mkdir(path)
 #endif
 
-#define TITLE "ird_tools v0.4\n\n"
+#define TITLE "ird_tools v0.5\n\n"
 
 u8 verbose=0;
 u8 get_data;
