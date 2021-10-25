@@ -25,7 +25,7 @@
 	#define mkdir(path, mode) mkdir(path)
 #endif
 
-#define TITLE "ird_tools v0.5\n\n"
+#define TITLE "ird_tools v0.6\n\n"
 
 u8 verbose=0;
 u8 get_data;
@@ -213,8 +213,32 @@ void IRD_extract(char *IRD_PATH)
 	sprintf(msg, "\t\"SYS_VER\" : \"%s\",\n", ird->UpdateVersion);fputs(msg, json);
 	sprintf(msg, "\t\"APP_VER\" : \"%s\",\n", ird->AppVersion);fputs(msg, json);
 	
-	sprintf(msg, "\t\"HEADER_LEN\" : %d,\n", ird->HeaderLength);fputs(msg, json);
-	sprintf(msg, "\t\"FOOTER_LEN\" : %d,\n", ird->FooterLength);fputs(msg, json);
+	unsigned char header_md5[16];
+	md5_file((const char *) IRD_HEADER, header_md5);
+	sprintf(msg, "\t\"HEADER_MD5\" : \"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\",\n", 
+						header_md5[0x0],
+						header_md5[0x1],
+						header_md5[0x2],
+						header_md5[0x3],
+						header_md5[0x4],
+						header_md5[0x5],
+						header_md5[0x6],
+						header_md5[0x7],
+						header_md5[0x8],
+						header_md5[0x9],
+						header_md5[0xA],
+						header_md5[0xB],
+						header_md5[0xC],
+						header_md5[0xD],
+						header_md5[0xE],
+						header_md5[0xF]); fputs(msg, json);
+	
+	struct stat s;
+	stat(IRD_HEADER, &s);
+	//sprintf(msg, "\t\"HEADER_SIZE\" : %lld,\n", (u64) ((u64) ird->FileHashes[0].Sector * 0x800ULL));fputs(msg, json);
+	sprintf(msg, "\t\"HEADER_SIZE\" : %lld,\n", (u64) s.st_size);fputs(msg, json);
+	stat(IRD_FOOTER, &s);
+	sprintf(msg, "\t\"FOOTER_SIZE\" : %lld,\n", (u64) s.st_size);fputs(msg, json);
 	sprintf(msg, "\t\"DISC_SIZE\" : %lld,\n", (u64) ((u64) (ird->RegionHashes[ird->RegionHashesNumber-1].End+1) * 0x800ULL));fputs(msg, json);
 	sprintf(msg, "\t\"IRD_VERSION\" : %d,\n", ird->Version);fputs(msg, json);
 	sprintf(msg, "\t\"EXTRA_CONFIG\" : \"%X\",\n", ird->ExtraConfig);fputs(msg, json);
