@@ -25,7 +25,6 @@
 	#define mkdir(path, mode) mkdir(path)
 #endif
 
-#define TITLE "ird_tools v0.7\n\n"
 
 u8 verbose=0;
 u8 get_data;
@@ -245,6 +244,17 @@ void IRD_extract(char *IRD_PATH)
 	sprintf(msg, "\t\"ATTACHMENTS\" : \"%X\",\n", ird->Attachments);fputs(msg, json);
 	sprintf(msg, "\t\"UNIQUE_ID\" : \"%08X\",\n", ird->UniqueIdentifier);fputs(msg, json);
 	sprintf(msg, "\t\"CRC\" : \"%08X\",\n", ird->crc);fputs(msg, json);
+
+	FILE *f;
+	f = fopen(IRD_HEADER, "rb");
+	if(f!=NULL) {
+		u32 folders;
+		fseek (f , 0x30084, SEEK_SET);
+		fread(&folders, 1, 0x4, f);
+		fclose(f);
+		sprintf(msg, "\t\"FOLDER_COUNT\" : %u,\n", --folders);fputs(msg, json);
+	}
+
 	sprintf(msg, "\t\"FILE_COUNT\" : %u,\n", ird->FileHashesNumber);fputs(msg, json);
 
 	  fputs(     "\t\"FILES\" :\n", json);
