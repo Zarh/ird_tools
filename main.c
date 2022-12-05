@@ -25,6 +25,7 @@
 	#define mkdir(path, mode) mkdir(path)
 #endif
 
+#define TITLE "ird_tools v0.7\n\n"
 
 u8 verbose=0;
 u8 get_data;
@@ -369,9 +370,9 @@ void IRD_extract(char *IRD_PATH)
 		sprintf(msg, "\t\t\t\"START\": %u,\n",	ird->RegionHashes[i].Start); fputs(msg, json);
 		sprintf(msg, "\t\t\t\"END\": %u,\n",	ird->RegionHashes[i].End); fputs(msg, json);
 		if( plain ) {
-			fputs("\t\t\t\"TYPE\" : \"Plain\",\n", json);
+			fputs("\t\t\t\"TYPE\" : \"Plain\"\n", json);
 		} else {
-			fputs("\t\t\t\"TYPE\" : \"Encrypted\",\n", json);
+			fputs("\t\t\t\"TYPE\" : \"Encrypted\"\n", json);
 		}
 
 		sprintf(msg, " %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X | %-20d |\n",
